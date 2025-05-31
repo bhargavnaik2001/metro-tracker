@@ -22,7 +22,7 @@
     .dot {
       width: 20px;
       height: 20px;
-      background: rgb(0, 149, 255);
+      background: purple;
       border-radius: 50%;
       position: absolute;
       transition: all 0.5s ease;
@@ -58,38 +58,37 @@
       "Platform B": { left: "200px", top: "100px" },
       "Tunnel": { left: "100px", top: "200px" }
     };
+async function scanForBeacon() {
+  try {
+    const serviceUuid = '12345678-1234-1234-1234-123456789abc';
+    // Fixed: Using proper UUID format instead of 'abcd'
+    const characteristicUuid = '0000abcd-0000-1000-8000-00805f9b34fb';
 
-    async function scanForBeacon() {
-      try {
-        const serviceUuid = '12345678-1234-1234-1234-123456789abc';
-        const characteristicUuid = 'abcd';
+    const device = await navigator.bluetooth.requestDevice({
+      filters: [{ services: [serviceUuid] }]
+    });
 
-        const device = await navigator.bluetooth.requestDevice({
-          filters: [{ services: [serviceUuid] }]
-        });
+    const server = await device.gatt.connect();
+    const service = await server.getPrimaryService(serviceUuid);
+    const characteristic = await service.getCharacteristic(characteristicUuid);
+    const value = await characteristic.readValue();
 
-        const server = await device.gatt.connect();
-        const service = await server.getPrimaryService(serviceUuid);
-        const characteristic = await service.getCharacteristic(characteristicUuid);
-        const value = await characteristic.readValue();
+    const zone = new TextDecoder().decode(value);
+    zoneLabel.textContent = zone;
 
-        const zone = new TextDecoder().decode(value);
-        zoneLabel.textContent = zone;
-
-        const pos = zonePositions[zone];
-        if (pos) {
-          dot.style.left = pos.left;
-          dot.style.top = pos.top;
-        }
-
-        await server.disconnect();
-      } catch (error) {
-        console.error("BLE scan failed:", error);
-        alert("Alert BLE scan failed:", error);
-        alert("Failed to scan or read from beacon.");
-      }
+    const pos = zonePositions[zone];
+    if (pos) {
+      dot.style.left = pos.left;
+      dot.style.top = pos.top;
     }
-  </script>
+
+    await server.disconnect();
+  } catch (error) {
+    console.error("BLE scan failed:", error);
+    // Fixed: Removed duplicate alert with typo
+    alert("Failed to scan or read from beacon: " + error.message);
+  }
+}  </script>
 </body>
 
 </html>
