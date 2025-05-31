@@ -232,6 +232,8 @@
     }
 
     async function attemptReconnect() {
+      console.log("Attempting reconnect...");
+
       if (!connectedDevice) return;
       
       updateStatus('scanning', '🟡 Auto-reconnecting...');
@@ -245,6 +247,8 @@
     }
 
     async function attemptAutoReconnect() {
+      console.log("Attempting auto-reconnect...");
+      
       updateStatus('scanning', '🟡 Looking for previous beacons...');
       
       try {
