@@ -25,21 +25,117 @@
 
     #map {
       width: 90vw;
-      max-width: 400px;
-      height: 300px;
-      background: #eaeaea;
+      max-width: 500px;
+      height: 400px;
+      background: #f0f0f0;
       border-radius: 12px;
-      border: 1px solid #ccc;
+      border: 2px solid #333;
       position: relative;
+      margin: 20px 0;
     }
 
     .dot {
-      width: 20px;
-      height: 20px;
-      background: #007bff;
+      width: 16px;
+      height: 16px;
+      background: #ff4444;
+      border: 3px solid #fff;
       border-radius: 50%;
       position: absolute;
-      transition: all 0.5s ease;
+      transition: all 0.8s ease;
+      box-shadow: 0 0 10px rgba(255, 68, 68, 0.6);
+      z-index: 10;
+      /* Start at center */
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+    }
+
+    /* Map Structure */
+    .platform {
+      position: absolute;
+      background: #e8e8e8;
+      border: 2px solid #666;
+      border-radius: 4px;
+    }
+
+    .platform-left {
+      width: 80px;
+      height: 150px;
+      left: 20px;
+      top: 30px;
+    }
+
+    .platform-right {
+      width: 80px;
+      height: 150px;
+      right: 20px;
+      top: 30px;
+    }
+
+    .platform-center {
+      width: 280px;
+      height: 120px;
+      left: 50%;
+      top: 200px;
+      transform: translateX(-50%);
+    }
+
+    .lift {
+      position: absolute;
+      background: #d4d4d4;
+      border: 1px solid #999;
+      width: 30px;
+      height: 30px;
+      font-size: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+    }
+
+    .lift-1 { left: 30px; top: 200px; }
+    .lift-2 { left: 120px; top: 240px; }
+    .lift-3 { right: 80px; top: 240px; }
+    .lift-4 { right: 30px; top: 200px; }
+
+    .exit {
+      position: absolute;
+      background: #ff6b6b;
+      color: white;
+      padding: 4px 8px;
+      font-size: 10px;
+      font-weight: bold;
+      border-radius: 3px;
+      text-align: center;
+    }
+
+    .flat-exit {
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+
+    .staircase-exit {
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+
+    .beacon {
+      position: absolute;
+      width: 12px;
+      height: 12px;
+      background: #00ff00;
+      border: 2px solid #fff;
+      border-radius: 50%;
+      box-shadow: 0 0 8px rgba(0, 255, 0, 0.8);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0% { box-shadow: 0 0 8px rgba(0, 255, 0, 0.8); }
+      50% { box-shadow: 0 0 15px rgba(0, 255, 0, 1); }
+      100% { box-shadow: 0 0 8px rgba(0, 255, 0, 0.8); }
     }
 
     .zone-label {
@@ -103,6 +199,26 @@
 <body>
   <h1>📱 Metro Tracker (Phone BLE)</h1>
   <div id="map">
+    <!-- Platform structures -->
+    <div class="platform platform-left"></div>
+    <div class="platform platform-right"></div>
+    <div class="platform platform-center"></div>
+    
+    <!-- Lifts -->
+    <div class="lift lift-1">Lift</div>
+    <div class="lift lift-2">Lift</div>
+    <div class="lift lift-3">Lift</div>
+    <div class="lift lift-4">Lift</div>
+    
+    <!-- Exits -->
+    <div class="exit flat-exit">Flat Exit</div>
+    <div class="exit staircase-exit">Staircase Exit</div>
+    
+    <!-- Beacons -->
+    <div class="beacon" style="bottom: 40px; left: calc(50% + 30px);" title="Flat Exit Beacon"></div>
+    <div class="beacon" style="top: 40px; left: calc(50% - 30px);" title="Staircase Exit Beacon"></div>
+    
+    <!-- User dot -->
     <div id="dot" class="dot"></div>
   </div>
   <div class="zone-label">Current Zone: <span id="zone">None</span></div>
@@ -122,10 +238,12 @@
     const autoBtn = document.getElementById("autoBtn");
 
     const zonePositions = {
-      "Platform A": { left: "50px", top: "50px" },
-      "Platform B": { left: "200px", top: "100px" },
-      "Tunnel B": { left: "150px", top: "180px" },
-      "Exit C": { left: "280px", top: "220px" }
+      "Flat Exit": { left: "calc(50% + 30px)", top: "calc(100% - 60px)" },
+      "Staircase Exit": { left: "calc(50% - 30px)", top: "60px" },
+      "Platform A": { left: "60px", top: "100px" },
+      "Platform B": { left: "calc(100% - 60px)", top: "100px" },
+      "Center Platform": { left: "50%", top: "260px" },
+      "Lift Area": { left: "50%", top: "50%" }
     };
 
     let connectedDevice = null;
@@ -207,6 +325,26 @@
             if (pos) {
               dot.style.left = pos.left;
               dot.style.top = pos.top;
+              dot.style.transform = 'translate(-50%, -50%)';
+              
+              // Add zone-specific styling
+              if (zone.includes('Exit')) {
+                dot.style.background = '#ff4444';
+                dot.style.boxShadow = '0 0 15px rgba(255, 68, 68, 1)';
+              } else if (zone.includes('Platform')) {
+                dot.style.background = '#4444ff';
+                dot.style.boxShadow = '0 0 15px rgba(68, 68, 255, 1)';
+              } else {
+                dot.style.background = '#44ff44';
+                dot.style.boxShadow = '0 0 15px rgba(68, 255, 68, 1)';
+              }
+            } else {
+              // Unknown zone - keep at center
+              dot.style.left = '50%';
+              dot.style.top = '50%';
+              dot.style.transform = 'translate(-50%, -50%)';
+              dot.style.background = '#888';
+              dot.style.boxShadow = '0 0 10px rgba(136, 136, 136, 0.6)';
             }
           }
         } catch (error) {
@@ -232,8 +370,6 @@
     }
 
     async function attemptReconnect() {
-      console.log("Attempting reconnect...");
-
       if (!connectedDevice) return;
       
       updateStatus('scanning', '🟡 Auto-reconnecting...');
@@ -247,8 +383,6 @@
     }
 
     async function attemptAutoReconnect() {
-      console.log("Attempting auto-reconnect...");
-      
       updateStatus('scanning', '🟡 Looking for previous beacons...');
       
       try {
