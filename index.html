@@ -1,15 +1,46 @@
 <!DOCTYPE html>
 <html>
+
 <head>
   <title>Metro Locator (Web Bluetooth)</title>
   <style>
-    body { font-family: sans-serif; text-align: center; margin-top: 50px; }
-    #map { width: 400px; height: 300px; margin: auto; position: relative; background: #eee; border: 1px solid #ccc; }
-    .dot { width: 20px; height: 20px; background: rgb(0, 149, 255); border-radius: 50%; position: absolute; transition: all 0.5s ease; }
-    .zone-label { font-weight: bold; margin-top: 20px; }
-    button { padding: 10px 20px; margin-top: 20px; font-size: 16px; }
+    body {
+      font-family: sans-serif;
+      text-align: center;
+      margin-top: 50px;
+    }
+
+    #map {
+      width: 400px;
+      height: 300px;
+      margin: auto;
+      position: relative;
+      background: #eee;
+      border: 1px solid #ccc;
+    }
+
+    .dot {
+      width: 20px;
+      height: 20px;
+      background: rgb(0, 149, 255);
+      border-radius: 50%;
+      position: absolute;
+      transition: all 0.5s ease;
+    }
+
+    .zone-label {
+      font-weight: bold;
+      margin-top: 20px;
+    }
+
+    button {
+      padding: 10px 20px;
+      margin-top: 20px;
+      font-size: 16px;
+    }
   </style>
 </head>
+
 <body>
   <h1>📱 Metro Tracker (Phone BLE)</h1>
   <div id="map">
@@ -25,7 +56,7 @@
     const zonePositions = {
       "Platform A": { left: "50px", top: "50px" },
       "Platform B": { left: "200px", top: "100px" },
-      "Tunnel":     { left: "100px", top: "200px" }
+      "Tunnel": { left: "100px", top: "200px" }
     };
 
     async function scanForBeacon() {
@@ -54,10 +85,11 @@
         await server.disconnect();
       } catch (error) {
         console.error("BLE scan failed:", error);
+        alert("Alert BLE scan failed:", error);
         alert("Failed to scan or read from beacon.");
       }
     }
   </script>
 </body>
-</html>
 
+</html>
