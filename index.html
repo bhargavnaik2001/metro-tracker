@@ -48,6 +48,28 @@
       font-weight: bold;
     }
 
+    .status {
+      margin-top: 10px;
+      font-size: 0.9rem;
+      padding: 5px 10px;
+      border-radius: 5px;
+    }
+
+    .status.connected {
+      background-color: #d4edda;
+      color: #155724;
+    }
+
+    .status.disconnected {
+      background-color: #f8d7da;
+      color: #721c24;
+    }
+
+    .status.scanning {
+      background-color: #fff3cd;
+      color: #856404;
+    }
+
     button {
       margin-top: 20px;
       padding: 10px 20px;
@@ -63,6 +85,19 @@
     button:hover {
       background-color: #0056b3;
     }
+
+    button:disabled {
+      background-color: #6c757d;
+      cursor: not-allowed;
+    }
+
+    .auto-info {
+      margin-top: 15px;
+      font-size: 0.8rem;
+      color: #666;
+      text-align: center;
+      max-width: 300px;
+    }
   </style>
 </head>
 <body>
@@ -71,11 +106,20 @@
     <div id="dot" class="dot"></div>
   </div>
   <div class="zone-label">Current Zone: <span id="zone">None</span></div>
-  <button onclick="scanAndTrack()">🔍 Scan for Nearby Beacons</button>
+  <div id="status" class="status disconnected">🔴 Disconnected</div>
+  <button id="scanBtn" onclick="initialScan()">🔍 Connect to Beacons</button>
+  <button id="autoBtn" onclick="toggleAutoMode()" style="display:none;">🤖 Enable Auto Mode</button>
+  
+  <div class="auto-info">
+    💡 After first connection, the app will automatically reconnect to nearby beacons when you return to this page.
+  </div>
 
   <script>
     const dot = document.getElementById("dot");
     const zoneLabel = document.getElementById("zone");
+    const statusEl = document.getElementById("status");
+    const scanBtn = document.getElementById("scanBtn");
+    const autoBtn = document.getElementById("autoBtn");
 
     const zonePositions = {
       "Platform A": { left: "50px", top: "50px" },
@@ -86,45 +130,174 @@
 
     let connectedDevice = null;
     let characteristic = null;
+    let updateInterval = null;
+    let autoMode = localStorage.getItem('autoMode') === 'true';
 
-    async function scanAndTrack() {
+    // Auto-start if previously enabled
+    if (autoMode) {
+      autoBtn.style.display = 'inline-block';
+      autoBtn.textContent = '🤖 Auto Mode ON';
+      setTimeout(attemptAutoReconnect, 1000);
+    }
+
+    async function initialScan() {
+      updateStatus('scanning', '🟡 Scanning for beacons...');
+      scanBtn.disabled = true;
+
       try {
+        // More permissive scanning - will show all available BLE devices
         const device = await navigator.bluetooth.requestDevice({
-          filters: [{ namePrefix: 'beacon-' }],
+          acceptAllDevices: true,
           optionalServices: ['12345678-1234-1234-1234-123456789abc']
         });
 
         connectedDevice = device;
-
-        const server = await device.gatt.connect();
-        const service = await server.getPrimaryService('12345678-1234-1234-1234-123456789abc');
-        characteristic = await service.getCharacteristic('abcd');
-
-        updateZoneLoop();
+        
+        // Listen for disconnect events
+        device.addEventListener('gattserverdisconnected', onDisconnected);
+        
+        await connectAndStartTracking();
+        
+        // Show auto mode option after successful connection
+        autoBtn.style.display = 'inline-block';
+        scanBtn.textContent = '🔄 Reconnect';
+        
       } catch (error) {
-        alert("Failed to scan or read from beacon.\n" + error);
+        console.error("Scan failed:", error);
+        updateStatus('disconnected', '🔴 Connection failed');
+        scanBtn.disabled = false;
       }
     }
 
-    async function updateZoneLoop() {
-      if (!characteristic) return;
-
-      setInterval(async () => {
-        try {
-          const value = await characteristic.readValue();
-          const decoder = new TextDecoder();
-          const zone = decoder.decode(value);
-          zoneLabel.textContent = zone;
-          const pos = zonePositions[zone];
-          if (pos) {
-            dot.style.left = pos.left;
-            dot.style.top = pos.top;
-          }
-        } catch (e) {
-          console.error("Failed to read value:", e);
+    async function connectAndStartTracking() {
+      try {
+        if (!connectedDevice.gatt.connected) {
+          await connectedDevice.gatt.connect();
         }
-      }, 3000);
+
+        const service = await connectedDevice.gatt.getPrimaryService('12345678-1234-1234-1234-123456789abc');
+        characteristic = await service.getCharacteristic('0000abcd-0000-1000-8000-00805f9b34fb');
+
+        updateStatus('connected', '🟢 Connected - Tracking location');
+        scanBtn.disabled = false;
+        startLocationTracking();
+
+      } catch (error) {
+        console.error("Connection failed:", error);
+        updateStatus('disconnected', '🔴 Connection failed');
+        scanBtn.disabled = false;
+      }
     }
+
+    function startLocationTracking() {
+      // Clear any existing interval
+      if (updateInterval) {
+        clearInterval(updateInterval);
+      }
+
+      // Start continuous location updates
+      updateInterval = setInterval(async () => {
+        try {
+          if (characteristic && connectedDevice.gatt.connected) {
+            const value = await characteristic.readValue();
+            const zone = new TextDecoder().decode(value);
+            
+            zoneLabel.textContent = zone;
+            const pos = zonePositions[zone];
+            if (pos) {
+              dot.style.left = pos.left;
+              dot.style.top = pos.top;
+            }
+          }
+        } catch (error) {
+          console.error("Failed to read location:", error);
+        }
+      }, 2000); // Update every 2 seconds
+    }
+
+    function onDisconnected() {
+      updateStatus('disconnected', '🔴 Beacon disconnected');
+      if (updateInterval) {
+        clearInterval(updateInterval);
+      }
+      
+      // Auto-reconnect if in auto mode
+      if (autoMode) {
+        setTimeout(() => {
+          if (connectedDevice) {
+            attemptReconnect();
+          }
+        }, 3000);
+      }
+    }
+
+    async function attemptReconnect() {
+      if (!connectedDevice) return;
+      
+      updateStatus('scanning', '🟡 Auto-reconnecting...');
+      try {
+        await connectAndStartTracking();
+      } catch (error) {
+        console.error("Auto-reconnect failed:", error);
+        // Try again in 10 seconds
+        setTimeout(attemptReconnect, 10000);
+      }
+    }
+
+    async function attemptAutoReconnect() {
+      updateStatus('scanning', '🟡 Looking for previous beacons...');
+      
+      try {
+        // Try to reconnect to previously paired devices
+        const devices = await navigator.bluetooth.getDevices();
+        
+        for (const device of devices) {
+          try {
+            connectedDevice = device;
+            device.addEventListener('gattserverdisconnected', onDisconnected);
+            await connectAndStartTracking();
+            scanBtn.textContent = '🔄 Reconnect';
+            return; // Success, exit
+          } catch (error) {
+            continue; // Try next device
+          }
+        }
+        
+        // No previous devices worked
+        updateStatus('disconnected', '🔴 No previous beacons found');
+        
+      } catch (error) {
+        updateStatus('disconnected', '🔴 Auto-reconnect not available');
+      }
+    }
+
+    function toggleAutoMode() {
+      autoMode = !autoMode;
+      localStorage.setItem('autoMode', autoMode.toString());
+      
+      if (autoMode) {
+        autoBtn.textContent = '🤖 Auto Mode ON';
+        autoBtn.style.backgroundColor = '#28a745';
+      } else {
+        autoBtn.textContent = '🤖 Enable Auto Mode';
+        autoBtn.style.backgroundColor = '#007bff';
+      }
+    }
+
+    function updateStatus(type, message) {
+      statusEl.className = `status ${type}`;
+      statusEl.textContent = message;
+    }
+
+    // Cleanup on page unload
+    window.addEventListener('beforeunload', () => {
+      if (updateInterval) {
+        clearInterval(updateInterval);
+      }
+      if (connectedDevice && connectedDevice.gatt.connected) {
+        connectedDevice.gatt.disconnect();
+      }
+    });
   </script>
 </body>
 </html>
