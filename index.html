@@ -1,53 +1,77 @@
 <!DOCTYPE html>
-<html>
-
+<html lang="en">
 <head>
-  <title>Metro Locator (Web Bluetooth)</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🚋 Metro Tracker (Phone BLE)</title>
+  <link rel="manifest" href="manifest.json">
   <style>
     body {
-      font-family: sans-serif;
-      text-align: center;
-      margin-top: 50px;
+      margin: 0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #f8f9fa;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      color: #333;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      margin-bottom: 10px;
     }
 
     #map {
-      width: 400px;
+      width: 90vw;
+      max-width: 400px;
       height: 300px;
-      margin: auto;
-      position: relative;
-      background: #eee;
+      background: #eaeaea;
+      border-radius: 12px;
       border: 1px solid #ccc;
+      position: relative;
     }
 
     .dot {
       width: 20px;
       height: 20px;
-      background: purple;
+      background: #007bff;
       border-radius: 50%;
       position: absolute;
       transition: all 0.5s ease;
     }
 
     .zone-label {
+      margin-top: 16px;
+      font-size: 1rem;
       font-weight: bold;
-      margin-top: 20px;
     }
 
     button {
-      padding: 10px 20px;
       margin-top: 20px;
-      font-size: 16px;
+      padding: 10px 20px;
+      font-size: 1rem;
+      border: none;
+      border-radius: 8px;
+      background-color: #007bff;
+      color: white;
+      cursor: pointer;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    }
+
+    button:hover {
+      background-color: #0056b3;
     }
   </style>
 </head>
-
 <body>
   <h1>📱 Metro Tracker (Phone BLE)</h1>
   <div id="map">
     <div id="dot" class="dot"></div>
   </div>
   <div class="zone-label">Current Zone: <span id="zone">None</span></div>
-  <button onclick="scanForBeacon()">🔍 Scan for Nearby Beacons</button>
+  <button onclick="scanAndTrack()">🔍 Scan for Nearby Beacons</button>
 
   <script>
     const dot = document.getElementById("dot");
@@ -56,39 +80,51 @@
     const zonePositions = {
       "Platform A": { left: "50px", top: "50px" },
       "Platform B": { left: "200px", top: "100px" },
-      "Tunnel": { left: "100px", top: "200px" }
+      "Tunnel B": { left: "150px", top: "180px" },
+      "Exit C": { left: "280px", top: "220px" }
     };
-async function scanForBeacon() {
-  try {
-    const serviceUuid = '12345678-1234-1234-1234-123456789abc';
-    // Fixed: Using proper UUID format instead of 'abcd'
-    const characteristicUuid = '0000abcd-0000-1000-8000-00805f9b34fb';
 
-    const device = await navigator.bluetooth.requestDevice({
-      filters: [{ services: [serviceUuid] }]
-    });
+    let connectedDevice = null;
+    let characteristic = null;
 
-    const server = await device.gatt.connect();
-    const service = await server.getPrimaryService(serviceUuid);
-    const characteristic = await service.getCharacteristic(characteristicUuid);
-    const value = await characteristic.readValue();
+    async function scanAndTrack() {
+      try {
+        const device = await navigator.bluetooth.requestDevice({
+          filters: [{ namePrefix: 'beacon-' }],
+          optionalServices: ['12345678-1234-1234-1234-123456789abc']
+        });
 
-    const zone = new TextDecoder().decode(value);
-    zoneLabel.textContent = zone;
+        connectedDevice = device;
 
-    const pos = zonePositions[zone];
-    if (pos) {
-      dot.style.left = pos.left;
-      dot.style.top = pos.top;
+        const server = await device.gatt.connect();
+        const service = await server.getPrimaryService('12345678-1234-1234-1234-123456789abc');
+        characteristic = await service.getCharacteristic('abcd');
+
+        updateZoneLoop();
+      } catch (error) {
+        alert("Failed to scan or read from beacon.\n" + error);
+      }
     }
 
-    await server.disconnect();
-  } catch (error) {
-    console.error("BLE scan failed:", error);
-    // Fixed: Removed duplicate alert with typo
-    alert("Failed to scan or read from beacon: " + error.message);
-  }
-}  </script>
-</body>
+    async function updateZoneLoop() {
+      if (!characteristic) return;
 
+      setInterval(async () => {
+        try {
+          const value = await characteristic.readValue();
+          const decoder = new TextDecoder();
+          const zone = decoder.decode(value);
+          zoneLabel.textContent = zone;
+          const pos = zonePositions[zone];
+          if (pos) {
+            dot.style.left = pos.left;
+            dot.style.top = pos.top;
+          }
+        } catch (e) {
+          console.error("Failed to read value:", e);
+        }
+      }, 3000);
+    }
+  </script>
+</body>
 </html>
