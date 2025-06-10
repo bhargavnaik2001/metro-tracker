@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Metro Locator (Web Bluetooth)</title>
+  <style>
+    body { font-family: sans-serif; text-align: center; margin-top: 50px; }
+    #map { width: 400px; height: 300px; margin: auto; position: relative; background: #eee; border: 1px solid #ccc; }
+    .dot { width: 20px; height: 20px; background: rgb(0, 149, 255); border-radius: 50%; position: absolute; transition: all 0.5s ease; }
+    .zone-label { font-weight: bold; margin-top: 20px; }
+    button { padding: 10px 20px; margin-top: 20px; font-size: 16px; }
+  </style>
+</head>
+<body>
+  <h1>📱 Metro Tracker (Phone BLE)</h1>
+  <div id="map">
+    <div id="dot" class="dot"></div>
+  </div>
+  <div class="zone-label">Current Zone: <span id="zone">None</span></div>
+  <button onclick="scanForBeacon()">🔍 Scan for Nearby Beacons</button>
+
+  <script>
+    const dot = document.getElementById("dot");
+    const zoneLabel = document.getElementById("zone");
+
+    const zonePositions = {
+      "Platform A": { left: "50px", top: "50px" },
+      "Platform B": { left: "200px", top: "100px" },
+      "Tunnel":     { left: "100px", top: "200px" }
+    };
+
+    async function scanForBeacon() {
+      try {
+        const serviceUuid = '12345678-1234-1234-1234-123456789abc';
+        const characteristicUuid = 'abcd';
+
+        const device = await navigator.bluetooth.requestDevice({
+          filters: [{ services: [serviceUuid] }]
+        });
+
+        const server = await device.gatt.connect();
+        const service = await server.getPrimaryService(serviceUuid);
+        const characteristic = await service.getCharacteristic(characteristicUuid);
+        const value = await characteristic.readValue();
+
+        const zone = new TextDecoder().decode(value);
+        zoneLabel.textContent = zone;
+
+        const pos = zonePositions[zone];
+        if (pos) {
+          dot.style.left = pos.left;
+          dot.style.top = pos.top;
+        }
+
+        await server.disconnect();
+      } catch (error) {
+        console.error("BLE scan failed:", error);
+        alert("Failed to scan or read from beacon.");
+      }
+    }
+  </script>
+</body>
+</html>
+
