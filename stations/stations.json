@@ -1,0 +1,16 @@
+{
+  "stations": [
+    {
+      "id": "1",
+      "name": "Andheri Metro",
+      "code": "andheri",
+      "ip": "192.168.31.54"
+    },
+    {
+      "id": "2",
+      "name": "Dadar Metro",
+      "code": "dadar",
+      "ip": "192.168.31.55"
+    }
+  ]
+}

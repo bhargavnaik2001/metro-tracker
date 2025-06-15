@@ -78,6 +78,26 @@ def bledata():
         "accuracy": accuracy
     }), 200
 
+
+
+BASE_DIR = os.path.dirname(__file__)
+STATIONS_JSON_PATH = os.path.join(BASE_DIR, "stations", "stations.json")
+
+
+@app.route("/stations", methods=["GET"])
+def list_stations():
+    if not os.path.exists(STATIONS_JSON_PATH):
+        return jsonify({"error": "stations.json not found"}), 404
+
+    try:
+        with open(STATIONS_JSON_PATH, "r") as f:
+            data = json.load(f)
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"error": f"Error reading stations.json: {str(e)}"}), 500
+
+
+
 if __name__ == "__main__":
     print("Starting BLE-positioning server on :5000")
     app.run(host="0.0.0.0", port=5000)
