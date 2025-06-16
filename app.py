@@ -1,103 +1,132 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory, abort
 import json
-import time
+import os
 import math
+from scipy.optimize import least_squares
 
 app = Flask(__name__)
-
-# Load your JSON mapping MAC → zone name
-with open("beacon_zones.json") as f:
-    BEACON_ZONES = json.load(f)
-
-# Known beacon (x,y) positions, matching the same MACs
-BEACON_POSITIONS = {
-    "6c:c8:40:34:d4:1e": (100, 600),   # Platform A
-    "68:25:dd:33:82:6a": (900, 600),   # Platform B
-    "68:25:dd:34:11:82": (500, 300),   # Midpoint
-}
-
-TX_POWER = -59   # RSSI at 1 m
-ENV_FACTOR = 2.0
-
-def rssi_to_distance(rssi: float) -> float:
-    """Log-distance path loss model."""
-    if rssi == 0:
-        return float('inf')
-    return 10 ** ((TX_POWER - rssi) / (10 * ENV_FACTOR))
-
-def trilaterate(pos, dist):
-    """Solve 3-beacon trilateration analytically."""
-    (x1,y1), (x2,y2), (x3,y3) = pos
-    r1, r2, r3 = dist
-    A = 2*(x2 - x1);  B = 2*(y2 - y1)
-    C = r1*r1 - r2*r2 - x1*x1 + x2*x2 - y1*y1 + y2*y2
-    D = 2*(x3 - x2);  E = 2*(y3 - y2)
-    F = r2*r2 - r3*r3 - x2*x2 + x3*x3 - y2*y2 + y3*y3
-    denom = A*E - B*D
-    if denom == 0:
-        return 0.0, 0.0
-    x = (C*E - B*F) / denom
-    y = (A*F - C*D) / denom
-    return x, y
-
-@app.route("/bledata", methods=["POST"])
-def bledata():
-    data = request.get_json()
-    if not data or "rssi_map" not in data:
-        return jsonify({"error": "Missing rssi_map"}), 400
-
-    rssi_map = data["rssi_map"]
-    # keep only known MACs
-    visible = [(mac, rssi) for mac,rssi in rssi_map.items() if mac in BEACON_POSITIONS]
-    if len(visible) < 3:
-        return jsonify({"error": "Need 3 beacons"}), 400
-
-    # pick top 3 by RSSI
-    visible.sort(key=lambda x: x[1], reverse=True)
-    top3 = visible[:3]
-
-    # positions & distances
-    positions = [BEACON_POSITIONS[mac] for mac,_ in top3]
-    distances = [rssi_to_distance(rssi) for _,rssi in top3]
-
-    # strongest beacon → zone + accuracy
-    strongest_mac, strongest_rssi = top3[0]
-    zone = BEACON_ZONES.get(strongest_mac, "Unknown")
-    accuracy = round(rssi_to_distance(strongest_rssi), 2)
-
-    # trilateration & clamp
-    x, y = trilaterate(positions, distances)
-    x = max(0, min(1000, x))
-    y = max(0, min(1000, y))
-
-    print(f"[{time.strftime('%H:%M:%S')}] → x={x:.1f}, y={y:.1f}, zone={zone}, acc={accuracy}")
-    return jsonify({
-        "x": x,
-        "y": y,
-        "zone": zone,
-        "accuracy": accuracy
-    }), 200
+STATIONS_DIR = "stations"
 
 
+def load_station_config(station_id):
+    path = os.path.join(STATIONS_DIR, station_id, "mapdata.json")
+    if not os.path.isfile(path):
+        raise FileNotFoundError(f"No config for station {station_id}")
+    with open(path) as f:
+        return json.load(f)
 
-BASE_DIR = os.path.dirname(__file__)
-STATIONS_JSON_PATH = os.path.join(BASE_DIR, "stations", "stations.json")
 
-
-@app.route("/stations", methods=["GET"])
-def list_stations():
-    if not os.path.exists(STATIONS_JSON_PATH):
-        return jsonify({"error": "stations.json not found"}), 404
-
+@app.route("/mapdata/<station_id>")
+def mapdata(station_id):
     try:
-        with open(STATIONS_JSON_PATH, "r") as f:
-            data = json.load(f)
-        return jsonify(data)
+        config = load_station_config(station_id)
+        return jsonify(config)
     except Exception as e:
-        return jsonify({"error": f"Error reading stations.json: {str(e)}"}), 500
+        return jsonify({"error": str(e)}), 404
 
+
+@app.route("/mapimage/<station_id>")
+def mapimage(station_id):
+    image_path = os.path.join(STATIONS_DIR, station_id, "metro_map.png")
+    if not os.path.exists(image_path):
+        abort(404)
+    return send_from_directory(os.path.join(STATIONS_DIR, station_id), "metro_map.png")
+
+
+@app.route("/stations")
+def stations():
+    entries = []
+    for name in os.listdir(STATIONS_DIR):
+        if os.path.isdir(os.path.join(STATIONS_DIR, name)):
+            entries.append({
+                "id": name,
+                "name": name.capitalize().replace("_", " "),
+                "baseUrl": request.host_url.rstrip("/")
+            })
+    return jsonify(entries)
+
+
+def distance_from_rssi(rssi, tx_power=-59, n=2.0):
+    """Estimate distance using RSSI."""
+    return 10 ** ((tx_power - rssi) / (10 * n))
+
+
+def trilaterate(beacons):
+    """Perform trilateration based on beacon positions and distances."""
+    if len(beacons) < 3:
+        raise ValueError("At least 3 beacons required")
+
+    def residuals(p):
+        x, y = p
+        return [
+            math.hypot(x - b['x'], y - b['y']) - b['distance']
+            for b in beacons
+        ]
+
+    initial_guess = [
+        sum(b['x'] for b in beacons) / len(beacons),
+        sum(b['y'] for b in beacons) / len(beacons)
+    ]
+
+    result = least_squares(residuals, initial_guess, method='lm')
+    x, y = result.x
+    error = sum(abs(r) for r in result.fun) / len(result.fun)
+    return x, y, error
+
+
+@app.route("/position", methods=["POST"])
+def position():
+    try:
+        data = request.get_json(force=True)
+        beacon_inputs = data.get("beacons", [])
+        station_id = data.get("stationId", "andheri").lower()
+
+        print(f"📡 Received beacon data for station: {station_id}")
+        print(f"📶 Beacon inputs: {beacon_inputs}")
+
+        if len(beacon_inputs) < 3:
+            return jsonify({"error": "At least 3 beacons required"}), 400
+
+        config = load_station_config(station_id)
+        known_beacons = {
+            b['mac'].lower(): b for b in config.get("beacons", [])}
+
+        trilateration_input = []
+        for b in beacon_inputs:
+            mac = b.get("mac", "").lower()
+            rssi = b.get("rssi", -70)
+            if mac in known_beacons:
+                kb = known_beacons[mac]
+                trilateration_input.append({
+                    "x": kb["x"],
+                    "y": kb["y"],
+                    "distance": distance_from_rssi(rssi)
+                })
+
+        if len(trilateration_input) < 3:
+            return jsonify({"error": "Matching beacons < 3"}), 400
+
+        x, y, accuracy = trilaterate(trilateration_input)
+
+        nearest = min(
+            config.get("beacons", []),
+            key=lambda b: math.hypot(x - b["x"], y - b["y"])
+        )["id"]
+
+        print(
+            f"✅ Estimated position: x={x:.2f}, y={y:.2f}, nearest={nearest}, accuracy={accuracy:.2f}")
+
+        return jsonify({
+            "x": x,
+            "y": y,
+            "accuracy": accuracy,
+            "nearest": nearest
+        })
+
+    except Exception as e:
+        print(f"❌ Error in /position: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":
-    print("Starting BLE-positioning server on :5000")
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=5000, debug=True)

@@ -1,6 +1,6 @@
 {
-  "stationId": "1",
-  "stationName": "Andheri metro",
+  "stationId": "andheri",
+  "stationName": "Andheri West Metro",
   "mapWidth": 853,
   "mapHeight": 653,
   "beacons": [
