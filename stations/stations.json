@@ -11,6 +11,12 @@
       "name": "Dadar Metro",
       "code": "dadar",
       "ip": "192.168.31.55"
+    },
+    {
+      "id": "2",
+      "name": "Goregaon Metro",
+      "code": "goregaon",
+      "ip": "192.168.31.55"
     }
   ]
 }
